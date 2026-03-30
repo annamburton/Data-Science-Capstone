@@ -1,7 +1,1 @@
 data/.gitkeep
-data/
-│── train_sample.csv
-│── members_sample.csv
-│── transactions_sample.csv
-│── user_logs_sample.csv
-│── kkbox_sample.csv
