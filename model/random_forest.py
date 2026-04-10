@@ -1,51 +1,106 @@
 import pandas as pd 
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
-from sklearn.preprocessing import LabelEncoder
-import warnings
-warnings.filterwarnings('ignore')
+import numpy as np
+import matplotlib.pyplot as plt
 
 #Loading the dataset 
-df = pd.read_csv("kkbox_dataset.csv")
+df = pd.read_csv(r"C:\Users\krish\Downloads\kkbox_dataset.csv")
+print("Shape:", df.shape)
 print(df.head())
-print(df.info())
 
-#Encoding categorical features
-cat_cols = df.select_dtypes(include='object').columns
+
+#Basic data checking to understand dataset structure and quality
+#Checking number of rows and columns, datatypes, etc. 
+print(df.columns.tolist())
+print(df["is_churn"].value_counts(dropna=False))
+print(df["is_churn"].value_counts(normalize=True, dropna=False))
+
+#Defining target variable y and feature set X
+#'is_churn' is the label to be predicted
+#'msno' is the user identifier
+
+X = df.drop(columns=["is_churn", "msno"], errors="ignore").copy()
+y = df["is_churn"].copy()
+
+print("Initial X shape:", X.shape)
+print("Initial y shape:", y.shape)
+
+#Check for missing values in the dataset
+
+print("Missing values before fill:", X.isnull().sum().sum())
+print(X.isnull().sum().sort_values(ascending=False).head(20))
+
+# Fill numerical missing values with median (robust to outliers) and categorical missing values with 'Unknown'
+df.fillna(df.median(numeric_only=True), inplace=True)
+
+for col in X.columns:
+    if pd.api.types.is_numeric_dtype(X[col]):
+        X[col] = X[col].fillna(X[col].median())
+    else:
+        X[col] = X[col].fillna("Unknown")
+
+print("Missing values after fill:", X.isnull().sum().sum())
+
+#Encoding categorical variables
+from sklearn.preprocessing import LabelEncoder
+
+cat_cols = X.select_dtypes(include="object").columns
 for col in cat_cols:
     le = LabelEncoder()
-    df[col] = le.fit_transform(df[col])
+    X[col] = le.fit_transform(X[col].astype(str))
 
-#Defining features and target
-X = df.drop(columns=['is_churn'])
-y = df['is_churn']
+print("Shape after encoding:", X.shape)
+X.head()
 
-#Train-Test split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+#Splitting the data into training and testing sets
+#Stratify ensures class distribution is preserved
+from sklearn.model_selection import train_test_split
 
-#Model
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+print("X_train:", X_train.shape)
+print("X_test:", X_test.shape)
+
+#n_estimators=200 builds 200 decision trees and averages their predictions
+#class_weight=balanced compensates for the imbalance
+#n_jobs=-1 uses all available CPU cores to speed up training
+
+from sklearn.ensemble import RandomForestClassifier
+
 rf_model = RandomForestClassifier(
     n_estimators=200,
     random_state=42,
-    class_weight='balanced'
+    class_weight="balanced",
+    n_jobs=-1
 )
 
-#Fitting model
 rf_model.fit(X_train, y_train)
+print("Random Forest model trained successfully.")
 
-#Predictions
+#Evaluate model performance using classification metrics
+from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix, accuracy_score
+
+#Predict class labels and probabilities on test set
 y_pred = rf_model.predict(X_test)
-y_prob = rf_model.predict_proba(X_test)[:,1]
+y_prob = rf_model.predict_proba(X_test)[:, 1]
 
-#Evaluate
 print("RANDOM FOREST RESULTS")
-print(f"Accuracy: {accuracy_score(y_test, y_pred):.2f}")
+print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
+print("Classification Report:")
 print(classification_report(y_test, y_pred))
-print(f"ROC-AUC: {roc_auc_score(y_test, y_prob):.3f}")
+print("ROC-AUC:", roc_auc_score(y_test, y_prob))
+print("Confusion Matrix:", confusion_matrix(y_test, y_pred))
 
-#Feature Importance
+#Extracting feature importances to understand which variables drive churn predictions
+#Higher importance = more influence on the model's decisions
+
 feature_imp = pd.Series(rf_model.feature_importances_, index=X_train.columns)
-print("\nTop 10 Features:")
-print(feature_imp.sort_values(ascending=False).head(10))
+top_features = feature_imp.sort_values(ascending=False)
 
+print("Top 10 Features:")
+print(top_features.head(10))
